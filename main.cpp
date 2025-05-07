@@ -10,15 +10,16 @@
 #define MAX_ELEMENTS_COUNT 3
 
 using namespace std;
+using namespace chrono;
 
 vector<int> threadsCount = {4, 8, 16, 32, 64, 128, 256};
-vector<int> arrSizes = {1000, 5000, 10000};
+vector<int> arrSizes = {10000, 100000, 1000000, 10000000, 100000000/*, 1000000000*/};
 
 vector<int> currentAnswers;
 
 void arrayFilling (vector<int> & array, int arrSize) {
     for (int i = 0; i < arrSize; i++) {
-        array.push_back(rand() % 100);
+        array.push_back(rand()); // is not limit for data
     }
 }
 
@@ -69,8 +70,6 @@ void simpleAlgorithm (vector<int> &array) {
     for (int i = 0; i < MAX_ELEMENTS_COUNT; i++) {
         maxElementsSum += maxElements[i];
     }
-
-    currentAnswers = maxElements;
 }
 
 void localMutexAlgorithm (vector<int> &array, vector<int> &maxElements, int startIndex, int endIndex, mutex &mtx) { 
@@ -216,19 +215,49 @@ void CASAlgorithm (vector<int> &array, int threadsCount) {
 void task () {
 
     for (int i = 0; i < arrSizes.size(); i++) {
+        cout << "=========================" << endl;
+
+        cout << "Array size: " << arrSizes[i] << endl;
+        cout << "-------------------------" << endl;
 
         vector<int> array;
-
         arrayFilling(array, arrSizes[i]);
+
+        auto start = high_resolution_clock::now();
 
         simpleAlgorithm(array);
 
+        auto end = high_resolution_clock::now();
+        auto duration = duration_cast<milliseconds>(end - start);
+        cout << "Simple algorithm: " << duration.count() << " ms" << endl;
+
+        cout << "- - - - - - - - - - - - -" << endl;
+
+        cout << "Threads\t| Mutex\t| CAS" << endl;
+
+        cout << "- - - - - - - - - - - - -" << endl;
+
         for (int j = 0; j < threadsCount.size(); j++) {
+
+            cout << threadsCount[j] << "\t| ";
+
+            start = high_resolution_clock::now();
 
             mutexAlgorithm(array, threadsCount[j]);
 
+            end = high_resolution_clock::now();
+            duration = duration_cast<milliseconds>(end - start);
+            cout << duration.count() << " ms\t| ";
+
+            start = high_resolution_clock::now();
+
             CASAlgorithm(array, threadsCount[j]);
+
+            end = high_resolution_clock::now();
+            duration = duration_cast<milliseconds>(end - start);
+            cout << duration.count() << " ms" << endl;
         }
+        cout << "=========================" << endl << endl;
     }
 }
 
