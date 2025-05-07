@@ -13,7 +13,7 @@ using namespace std;
 using namespace chrono;
 
 vector<int> threadsCount = {4, 8, 16, 32, 64, 128, 256};
-vector<int> arrSizes = {10000, 100000, 1000000, 10000000, 100000000/*, 1000000000*/};
+vector<int> arrSizes = {10000, 100000, 1000000, 10000000, 100000000, 1000000000};
 
 vector<int> currentAnswers;
 
