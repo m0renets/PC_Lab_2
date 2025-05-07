@@ -5,6 +5,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <chrono>
 
 #define MAX_ELEMENTS_COUNT 3
 
@@ -13,24 +14,34 @@ using namespace std;
 vector<int> threadsCount = {4, 8, 16, 32, 64, 128, 256};
 vector<int> arrSizes = {1000, 5000, 10000};
 
+vector<int> currentAnswers;
+
 void arrayFilling (vector<int> & array, int arrSize) {
     for (int i = 0; i < arrSize; i++) {
-        array.push_back(rand() % 10000);
+        array.push_back(rand() % 100);
     }
 }
-
-// void arrayPrint(vector<int> *array) {
-//     for (int i = 0; i < array->size(); i++) {
-//         cout << (*array)[i] << " ";
-//     }
-//     cout << endl;
-// }
 
 void arraySorting (int * array) {
     for (int i = 0; i < MAX_ELEMENTS_COUNT - 1; i++) {
         for (int j = 0; j < MAX_ELEMENTS_COUNT - i - 1; j++) {
             if (array[j] > array[j + 1]) {
                 swap(array[j], array[j + 1]);
+            }
+        }
+    }
+}
+
+void atomicIntArraySorting(atomic<int> *array) {
+    for (int i = 0; i < MAX_ELEMENTS_COUNT - 1; i++) {
+        for (int j = 0; j < MAX_ELEMENTS_COUNT - i - 1; j++) {
+            int j_val = array[j].load();
+            int j_plus_1_val = array[j + 1].load();
+
+            if (j_val > j_plus_1_val) {
+
+                while (!array[j].compare_exchange_weak(j_val, j_plus_1_val)) {}
+                while (!array[j + 1].compare_exchange_weak(j_plus_1_val, j_val)) {}
             }
         }
     }
@@ -58,6 +69,8 @@ void simpleAlgorithm (vector<int> &array) {
     for (int i = 0; i < MAX_ELEMENTS_COUNT; i++) {
         maxElementsSum += maxElements[i];
     }
+
+    currentAnswers = maxElements;
 }
 
 void localMutexAlgorithm (vector<int> &array, vector<int> &maxElements, int startIndex, int endIndex, mutex &mtx) { 
@@ -82,7 +95,9 @@ void localMutexAlgorithm (vector<int> &array, vector<int> &maxElements, int star
     lock_guard<mutex> lock(mtx);
 
     for (int i = 0; i < MAX_ELEMENTS_COUNT; i++) {
+
         if (localMaxElements[localMaxElements.size() - 1 - i] > maxElements[0]) {
+
             maxElements[0] = localMaxElements[localMaxElements.size() - 1 - i];
             arraySorting(&maxElements[0]);
         }
@@ -110,6 +125,7 @@ void mutexAlgorithm (vector<int> &array, int threadsCount) {
     for (int i = 0; i < threadsCount; i++) {
 
         int endIndex = startIndex + elementsPerThread;
+
         if (i < remainingElements) {
             endIndex++;
         }
@@ -127,45 +143,46 @@ void mutexAlgorithm (vector<int> &array, int threadsCount) {
     }
 }
 
-// void localCASAlgorithm (vector<int> &array, vector<atomic<int>> &maxElements, int startIndex, int endIndex) {
-//     vector<int> localMaxElements;
-//     localMaxElements.resize(MAX_ELEMENTS_COUNT);
+void localCASAlgorithm(vector<int> &array, vector<atomic<int>> &maxElements, int startIndex, int endIndex) {
+    vector<int> localMaxElements(MAX_ELEMENTS_COUNT);
 
-//     for (int i = 0; i < MAX_ELEMENTS_COUNT; i++) {
-//         localMaxElements[i] = array[i + startIndex];
-//     }
+    for (int i = 0; i < MAX_ELEMENTS_COUNT; i++) {
+        localMaxElements[i] = array[i + startIndex];
+    }
 
-//     arraySorting(&localMaxElements[0]);
+    arraySorting(&localMaxElements[0]);
 
-//     for (int i = MAX_ELEMENTS_COUNT + startIndex; i < endIndex; i++) {
+    for (int i = MAX_ELEMENTS_COUNT + startIndex; i < endIndex; i++) {
 
-//         if (array[i] > localMaxElements[0]) {
-//             localMaxElements[0] = array[i];
-//             arraySorting(&localMaxElements[0]);
-//         }
-//     }
+        if (array[i] > localMaxElements[0]) {
+            localMaxElements[0] = array[i];
+            arraySorting(&localMaxElements[0]);
+        }
+    }
 
-//     for (int val : localMaxElements) {
-//         for (int i = 0; i < MAX_ELEMENTS_COUNT; i++) {
-//             int current = maxElements[i].load();
-//             if (val > current) {
-//                 // CAS: намагаємося оновити maxElements[i]
-//                 while (!maxElements[i].compare_exchange_weak(current, val)) {
-//                     // Якщо не вдалось — оновити current та повторити
-//                     if (val <= current) break; // Якщо хтось уже вставив краще — не треба далі
-//                 }
-//                 break; // вставили — далі не йдемо вниз по списку
-//             }
-//         }
-//     }
+    for (int i = 0; i < MAX_ELEMENTS_COUNT; i++) {
 
-// }
+        int localValue = localMaxElements[localMaxElements.size() - 1 - i];
+        int currValue = maxElements[0].load();
+
+        if (localValue > currValue) {
+
+            while (!maxElements[0].compare_exchange_weak(currValue, localValue)) { }
+
+                atomicIntArraySorting(&maxElements[0]);
+            }
+
+            else {
+
+                break;
+            }
+    }
+}
 
 void CASAlgorithm (vector<int> &array, int threadsCount) {
 
-    vector<atomic<int>> maxElements;
+    vector<atomic<int>> maxElements(MAX_ELEMENTS_COUNT);
 
-    maxElements.resize(MAX_ELEMENTS_COUNT);
     int maxElementsSum = 0;
 
     vector<thread> threads;
@@ -182,7 +199,7 @@ void CASAlgorithm (vector<int> &array, int threadsCount) {
             endIndex++;
         }
 
-        // threads.emplace_back(localCASAlgorithm, ref(array), ref(maxElements), startIndex, endIndex);
+        threads.emplace_back(localCASAlgorithm, ref(array), ref(maxElements), startIndex, endIndex);
 
         startIndex = endIndex;
     }
@@ -210,7 +227,7 @@ void task () {
 
             mutexAlgorithm(array, threadsCount[j]);
 
-            // CASAlgorithm(array, threadsCount[j]);
+            CASAlgorithm(array, threadsCount[j]);
         }
     }
 }
